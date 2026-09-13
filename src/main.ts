@@ -204,7 +204,7 @@ network.setRoadsVisible(false);
 const live = createLiveData();
 
 async function refreshLive() {
-  const services = await live.refresh();
+  const services = await live.forceRefresh();
   const el = document.getElementById('dataStatus')!;
   if (live.isLive()) {
     const cancelled = services.filter((s) => s.isCancelled).length;

@@ -109,6 +109,7 @@ function findMatchingLine(originName: string, destinationName: string): { line: 
 
 export interface LiveHandle {
   refresh: () => Promise<LiveService[]>;
+  forceRefresh: () => Promise<LiveService[]>;
   getServices: () => LiveService[];
   isLive: () => boolean;
   lastFetch: () => number;
@@ -120,16 +121,24 @@ export function createLiveData(): LiveHandle {
   let lastFetchMs = 0;
   let lastOkKey = -1;
   let lastLogMs = 0;
+  let consecutiveFailures = 0;        // back off after several failed refreshes
 
-  async function refresh(): Promise<LiveService[]> {
+  async function refresh(force = false): Promise<LiveService[]> {
     services = [];
     let ok = 0;
     let failed = 0;
     let firstErr: any = null;
+
+    // After 3 failed refreshes, stop auto-polling — keep the panel
+    // showing "Simulated" and stop spamming the browser console with
+    // network failures every minute. User can still force-refresh.
+    if (!force && consecutiveFailures >= 3) {
+      (refresh as any).lastError = `paused after ${consecutiveFailures} failures`;
+      live = false;
+      return [];
+    }
+
     try {
-      // Fetch each terminus station in parallel but never `throw` on
-      // upstream errors — that produces unhandled-rejection console
-      // errors every refresh. We resolve to null on failure instead.
       const results = await Promise.all(
         TERMINI.map(async (t) => {
           try {
@@ -178,6 +187,8 @@ export function createLiveData(): LiveHandle {
       services = out;
       live = out.length > 0;
       lastFetchMs = Date.now();
+      if (live) consecutiveFailures = 0;
+      else consecutiveFailures++;
       const okKey = ok;
       if (lastOkKey !== okKey || Date.now() - lastLogMs > 30_000) {
         console.log(`[live] ${ok}/${TERMINI.length} OK · ${out.length} services${firstErr ? ' · ' + String(firstErr?.message ?? firstErr) : ''}`);
@@ -194,12 +205,14 @@ export function createLiveData(): LiveHandle {
       }
       (refresh as any).lastError = e?.message ?? String(e);
       live = false;
+      consecutiveFailures++;
       return [];
     }
   }
 
   return {
-    refresh,
+    refresh: () => refresh(false),
+    forceRefresh: () => { consecutiveFailures = 0; return refresh(true); },
     getServices: () => services,
     isLive: () => live,
     lastFetch: () => lastFetchMs,
