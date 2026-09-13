@@ -202,6 +202,7 @@ network.setRoadsVisible(false);
 
 // 11) Live National Rail data via Huxley2
 const live = createLiveData();
+
 async function refreshLive() {
   const services = await live.refresh();
   const el = document.getElementById('dataStatus')!;
@@ -213,14 +214,21 @@ async function refreshLive() {
       `<span style="color:var(--line-dim);font-size:11px">` +
       `(${services.length} services · ${delayed} delayed · ${cancelled} cancelled)</span>`;
   } else {
-    el.innerHTML = '<span style="color:#fbbf24">●</span> Simulated';
+    // Upstream likely down — surface the actual error
+    const lastErr = (live.refresh as any).lastError ?? 'upstream offline';
+    el.innerHTML =
+      `<span style="color:#fbbf24">●</span> Simulated ` +
+      `<span style="color:#ef4444;font-size:10px" title="Click ↻ to retry">${lastErr}</span> ` +
+      `<button id="liveRetry" style="padding:1px 6px;font-size:10px;background:rgba(125,150,200,0.10);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;font-family:inherit">↻</button>`;
+    const btn = document.getElementById('liveRetry');
+    if (btn) btn.onclick = () => refreshLive();
   }
   // Show a small preview of currently-delayed services in the panel
   const delaysEl = document.getElementById('liveDelays');
   if (delaysEl) {
     const delayed = services.filter((s) => s.etaMinutes !== null && s.etaMinutes > 5);
     if (delayed.length === 0) {
-      delaysEl.innerHTML = '<span style="color:var(--line-dim)">No live delays</span>';
+      delaysEl.innerHTML = '<span style="color:var(--line-dim)">No live delays right now</span>';
     } else {
       delaysEl.innerHTML = delayed.slice(0, 6).map((s) =>
         `<div class="delay-item">` +

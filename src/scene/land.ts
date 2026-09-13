@@ -33,8 +33,8 @@ function makeCoast(points: [number, number][], color: number, opacity = 0.8) {
 }
 
 export function buildLand(scene: THREE.Scene) {
-  scene.add(makeLand(GB, 0x1a2738));
-  scene.add(makeLand(IRELAND, 0x141e2c));
+  scene.add(makeLand(GB, 0x2e3f5e));   // lighter slate so it reads against the dark sea
+  scene.add(makeLand(IRELAND, 0x2a3a55));
   scene.add(makeCoast(GB, 0x4a7090));
   scene.add(makeCoast(IRELAND, 0x3a5870, 0.5));
 }

@@ -11,13 +11,40 @@
 import * as THREE from 'three';
 import type { RailLine } from '../data/lines';
 import { LINES } from '../data/lines';
+import { OPERATORS } from '../data/operators';
 import { ROADS } from '../data/motorways';
 import { makeGetPos } from './stations';
 
+// Region buckets used by the filter chips
+function regionOf(lineName: string): string {
+  const lo = lineName.toLowerCase();
+  if (lo.includes('london') || lo.includes('thameslink') || lo.includes('elizabeth') ||
+      lo.includes('chiltern') || lo.includes('midland') || lo.includes('great western')) return 'South East';
+  if (lo.includes('wrexham') || lo.includes('cambrian') || lo.includes('wales') || lo.includes('rhondda') ||
+      lo.includes('cynon') || lo.includes('merthyr') || lo.includes('coryton') ||
+      lo.includes('vale of glamorgan') || lo.includes('shrewsbury')) return 'Wales';
+  if (lo.includes('scotrail') || lo.includes('edinburgh') || lo.includes('glasgow') ||
+      lo.includes('inverness') || lo.includes('highland') || lo.includes('kyle') ||
+      lo.includes('far north') || lo.includes('west highland') || lo.includes('borders') ||
+      lo.includes('ayrshire') || lo.includes('oban') || lo.includes('cumbrian')) return 'Scotland';
+  if (lo.includes('merseyrail')) return 'Merseyside';
+  if (lo.includes('settle') || lo.includes('tyne valley') || lo.includes('durham coast') ||
+      lo.includes('calder') || lo.includes('huddersfield') || lo.includes('trans-pennine') ||
+      lo.includes('east lancashire') || lo.includes('copy pit') || lo.includes('rosedale') ||
+      lo.includes('hadfield') || lo.includes('hope valley') || lo.includes('yorkshire') ||
+      lo.includes('bridlington') || lo.includes('esk valley') || lo.includes('airdale') ||
+      lo.includes('wharfedale') || lo.includes('harrogate') || lo.includes('selside') ||
+      lo.includes('blackpool') || lo.includes('burnley')) return 'North';
+  if (lo.includes('cross-country') || lo.includes('birmingham') || lo.includes('newcastle-under-lyme') ||
+      lo.includes('cannock') || lo.includes('midlands') || lo.includes('stoke') ||
+      lo.includes('nottingham') || lo.includes('derby') || lo.includes('leicester')) return 'Midlands';
+  return 'Other';
+}
+
 const STROKE = {
-  main:     { width: 0.04,  opacity: 0.95, emissive: 0.5 },
-  regional: { width: 0.025, opacity: 0.85, emissive: 0.3 },
-  london:   { width: 0.022, opacity: 0.90, emissive: 0.4 },
+  main:     { radius: 0.06, opacity: 0.98, emissive: 0.6 },
+  regional: { radius: 0.04, opacity: 0.92, emissive: 0.35 },
+  london:   { radius: 0.035, opacity: 0.95, emissive: 0.45 },
 };
 
 // Shared rectangular road-bar geometry (long thin box, oriented +X)
@@ -36,6 +63,8 @@ export interface NetworkHandle {
     totalDelays: number; total: number; lines: { name: string; count: number }[];
   };
   getRailDelays: () => Array<{ lineName: string; reason: string; station: string; extraMin: number }>;
+  setOperatorFilter: (ops: Set<string> | null) => void;
+  setRegionFilter: (regions: Set<string> | null) => void;
 }
 
 export function buildNetwork(
@@ -52,6 +81,8 @@ export function buildNetwork(
   const visibleCats = { main: true, regional: false, };
   const visibleLines = new Set<string>(LINES.map((l) => l.name));
   const lineMeshes = new Map<string, THREE.Group>();
+  let operatorFilter: Set<string> | null = null;
+  let regionFilter: Set<string> | null = null;
 
   function buildRailLine(line: RailLine): THREE.Group | null {
     const pts = line.route.map((n) => getPos(n)).filter((p): p is THREE.Vector3 => !!p);
@@ -59,22 +90,22 @@ export function buildNetwork(
     const lifted = pts.map((p) => new THREE.Vector3(p.x, 0.21, p.z));
     const curve = new THREE.CatmullRomCurve3(lifted, false, 'centripetal', 0.5);
     const segs = Math.max(50, pts.length * 6);
-    const curvePts = curve.getSpacedPoints(segs);
-    const geo = new THREE.BufferGeometry().setFromPoints(curvePts);
     const def = STROKE[line.cat];
-    const mat = new THREE.LineDashedMaterial({
-      color: line.color,
-      transparent: true,
-      opacity: def.opacity,
-      dashSize: 0.18,
-      gapSize: 0.10,
-      linewidth: 1,
-    });
-    const dashed = new THREE.Line(geo, mat);
-    dashed.computeLineDistances();   // required for LineDashedMaterial
-
+    // Bolder tube — visible from UK-overview down to city-zoom
+    const tube = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, segs, def.radius, 10, false),
+      new THREE.MeshStandardMaterial({
+        color: line.color,
+        emissive: line.color,
+        emissiveIntensity: def.emissive,
+        roughness: 0.45,
+        metalness: 0.2,
+        transparent: true,
+        opacity: def.opacity,
+      }),
+    );
     const grp = new THREE.Group();
-    grp.add(dashed);
+    grp.add(tube);
     grp.userData.line = line;
     return grp;
   }
@@ -89,6 +120,14 @@ export function buildNetwork(
     for (const line of LINES) {
       if (!visibleCats[line.cat]) continue;
       if (!visibleLines.has(line.name)) continue;
+      if (operatorFilter && operatorFilter.size > 0) {
+        const op = OPERATORS[line.name]?.[0];
+        if (!op || !operatorFilter.has(op)) continue;
+      }
+      if (regionFilter && regionFilter.size > 0) {
+        const r = regionOf(line.name);
+        if (!regionFilter.has(r)) continue;
+      }
       const mesh = buildRailLine(line);
       if (mesh) { lineGroup.add(mesh); lineMeshes.set(line.name, mesh); }
     }
@@ -229,26 +268,28 @@ const TRAFFIC_COLORS = [0x003B8E, 0xef4444];   // 0 = free (motorway blue), 1 = 
     setRoadsVisible: (on) => { roadGroup.visible = on; },
     getVisibleLineNames: () => [...lineMeshes.keys()],
     refreshTraffic,
-  getMotorwayDelaySummary: () => {
-    let totalDelays = 0;
-    let totalSegs = 0;
-    const lines: { name: string; count: number }[] = [];
-    for (const rec of roadRecords) {
-      const segs = trafficState.get(rec.road.name)!;
-      const d = segs.reduce((a, b) => a + b, 0);
-      totalDelays += d;
-      totalSegs += segs.length;
-      if (d > 0) lines.push({ name: rec.road.name, count: d });
-    }
-    lines.sort((a, b) => b.count - a.count);
-    return { totalDelays, total: totalSegs, lines };
-  },
-  getRailDelays: () => railDelays,
-  refreshRailDelays: () => simulateRailDelays(),
+    refreshRailDelays: () => simulateRailDelays(),
     getLineMeshes: () => {
       const out: THREE.Mesh[] = [];
       lineGroup.traverse((c) => { if ((c as THREE.Mesh).isMesh) out.push(c as THREE.Mesh); });
       return out;
     },
+    getMotorwayDelaySummary: () => {
+      let totalDelays = 0;
+      let totalSegs = 0;
+      const lines: { name: string; count: number }[] = [];
+      for (const rec of roadRecords) {
+        const segs = trafficState.get(rec.road.name)!;
+        const d = segs.reduce((a, b) => a + b, 0);
+        totalDelays += d;
+        totalSegs += segs.length;
+        if (d > 0) lines.push({ name: rec.road.name, count: d });
+      }
+      lines.sort((a, b) => b.count - a.count);
+      return { totalDelays, total: totalSegs, lines };
+    },
+    getRailDelays: () => railDelays,
+    setOperatorFilter: (set) => { operatorFilter = set; rebuildRail(); },
+    setRegionFilter:  (set) => { regionFilter  = set; rebuildRail(); },
   };
 }

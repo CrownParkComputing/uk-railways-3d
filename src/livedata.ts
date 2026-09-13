@@ -171,19 +171,22 @@ export function createLiveData(): LiveHandle {
       services = out;
       live = out.length > 0;
       lastFetchMs = Date.now();
-      // Only log on the first fetch or when the OK count changes
       const okKey = ok;
       if (lastOkKey !== okKey || Date.now() - lastLogMs > 30_000) {
         console.log(`[live] ${ok}/${TERMINI.length} OK · ${out.length} services${firstErr ? ' · firstErr=' + String(firstErr?.message ?? firstErr) : ''}`);
         lastOkKey = okKey; lastLogMs = Date.now();
       }
+      // Expose last error so the UI can show it
+      (refresh as any).lastError = failed === TERMINI.length
+        ? (firstErr ? String(firstErr?.message ?? firstErr) : 'all stations failed')
+        : null;
       return out;
     } catch (e: any) {
-      // Throttled outer error log
       if (Date.now() - lastLogMs > 30_000) {
         console.warn('[live] outer error:', e?.message ?? e);
         lastLogMs = Date.now();
       }
+      (refresh as any).lastError = e?.message ?? String(e);
       live = false;
       return [];
     }
