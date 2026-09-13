@@ -18,7 +18,7 @@ export function createWorld(container: HTMLElement): World {
   scene.background = new THREE.Color(0x0a1422);
 
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
-  camera.position.set(-6, 38, 42);
+  camera.position.set(-12, 60, 80);   // higher + further for SCALE=3.6
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
