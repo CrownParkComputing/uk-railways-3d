@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { proj } from './projection';
 import { GB, IRELAND } from './coastlines';
 
-function makeLand(points: [number, number][], color: number) {
+function makeLand(points: [number, number][], color: number, mat: THREE.Material) {
   const shape = new THREE.Shape();
   shape.moveTo(proj(points[0][0], points[0][1])[0], proj(points[0][0], points[0][1])[1]);
   for (let i = 1; i < points.length; i++) {
@@ -17,9 +17,7 @@ function makeLand(points: [number, number][], color: number) {
   });
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, -0.20, 0);   // sit on y=0
-  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-    color, roughness: 0.92, metalness: 0.05,
-  }));
+  return new THREE.Mesh(geo, mat);
 }
 
 function makeCoast(points: [number, number][], color: number, opacity = 0.8) {
