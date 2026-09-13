@@ -32,9 +32,16 @@ function makeCoast(points: [number, number][], color: number, opacity = 0.8) {
   return new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity }));
 }
 
+// Land material: matte so the directional light doesn't make it look
+// like an oily puddle — no specular sheen, no reflection, just flat colour.
+const landMat = new THREE.MeshStandardMaterial({
+  color: 0x2e3f5e, roughness: 1.0, metalness: 0.0, flatShading: false,
+});
+
 export function buildLand(scene: THREE.Scene) {
-  scene.add(makeLand(GB, 0x2e3f5e));   // lighter slate so it reads against the dark sea
-  scene.add(makeLand(IRELAND, 0x2a3a55));
+  scene.add(makeLand(GB, 0x2e3f5e, landMat));
+  const ireMat = landMat.clone(); ireMat.color.setHex(0x2a3a55);
+  scene.add(makeLand(IRELAND, 0x2a3a55, ireMat));
   scene.add(makeCoast(GB, 0x4a7090));
   scene.add(makeCoast(IRELAND, 0x3a5870, 0.5));
 }
