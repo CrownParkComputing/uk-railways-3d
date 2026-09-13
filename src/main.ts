@@ -190,7 +190,7 @@ document.getElementById('trainsBtn')!.addEventListener('click', (e) => {
   btn.classList.toggle('on', on);
   trains.setVisible(on);
 });
-document.getElementById('refreshTrains')!.addEventListener('click', () => trains.rebuild());
+// (refreshTrains button removed in the new panel; trains rebuild every 30 s in the tick loop)
 document.getElementById('roadsBtn')!.addEventListener('click', (e) => {
   const btn = e.currentTarget as HTMLButtonElement;
   const on = !btn.classList.contains('on');
