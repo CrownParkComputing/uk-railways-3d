@@ -129,7 +129,9 @@ export function createLiveData(): LiveHandle {
     try {
       const results = await Promise.allSettled(
         TERMINI.map((t) =>
-          window.fetch(`https://huxley2.azurewebsites.net/departures/${t.crs}/8`, { mode: 'cors' })
+          // Use our own /api/huxley CORS proxy so the browser doesn't
+          // get blocked by 500 responses missing CORS headers upstream.
+          window.fetch(`/api/huxley/departures/${t.crs}/8`)
             .then((r) => {
               if (!r.ok) throw new Error(`HTTP ${r.status} for ${t.crs}`);
               return r.json().then((j: any) => ({ crs: t.crs, name: t.name, j }));
