@@ -127,21 +127,26 @@ export function createLiveData(): LiveHandle {
     let failed = 0;
     let firstErr: any = null;
     try {
-      const results = await Promise.allSettled(
-        TERMINI.map((t) =>
-          // Use our own /api/huxley CORS proxy so the browser doesn't
-          // get blocked by 500 responses missing CORS headers upstream.
-          window.fetch(`/api/huxley/departures/${t.crs}/8`)
-            .then((r) => {
-              if (!r.ok) throw new Error(`HTTP ${r.status} for ${t.crs}`);
-              return r.json().then((j: any) => ({ crs: t.crs, name: t.name, j }));
-            }),
-        ),
+      // Fetch each terminus station in parallel but never `throw` on
+      // upstream errors — that produces unhandled-rejection console
+      // errors every refresh. We resolve to null on failure instead.
+      const results = await Promise.all(
+        TERMINI.map(async (t) => {
+          try {
+            const r = await window.fetch(`/api/huxley/departures/${t.crs}/8`);
+            if (!r.ok) { failed++; return { ok: false, crs: t.crs, err: new Error(`HTTP ${r.status}`) }; }
+            const j = await r.json();
+            return { ok: true, crs: t.crs, name: t.name, j };
+          } catch (e: any) {
+            failed++;
+            return { ok: false, crs: t.crs, err: e };
+          }
+        }),
       );
       const out: LiveService[] = [];
       for (const r of results) {
-        if (r.status !== 'fulfilled') { failed++; if (!firstErr) firstErr = (r as any).reason; continue; }
-        const { crs, name, j } = r.value;
+        if (!r.ok) { if (!firstErr) firstErr = r.err; continue; }
+        const { crs, name, j } = r as any;
         ok++;
         const ts: any[] = j?.trainServices ?? [];
         for (const s of ts) {
@@ -175,17 +180,16 @@ export function createLiveData(): LiveHandle {
       lastFetchMs = Date.now();
       const okKey = ok;
       if (lastOkKey !== okKey || Date.now() - lastLogMs > 30_000) {
-        console.log(`[live] ${ok}/${TERMINI.length} OK · ${out.length} services${firstErr ? ' · firstErr=' + String(firstErr?.message ?? firstErr) : ''}`);
+        console.log(`[live] ${ok}/${TERMINI.length} OK · ${out.length} services${firstErr ? ' · ' + String(firstErr?.message ?? firstErr) : ''}`);
         lastOkKey = okKey; lastLogMs = Date.now();
       }
-      // Expose last error so the UI can show it
       (refresh as any).lastError = failed === TERMINI.length
         ? (firstErr ? String(firstErr?.message ?? firstErr) : 'all stations failed')
         : null;
       return out;
     } catch (e: any) {
       if (Date.now() - lastLogMs > 30_000) {
-        console.warn('[live] outer error:', e?.message ?? e);
+        console.log(`[live] outer error: ${e?.message ?? e}`);
         lastLogMs = Date.now();
       }
       (refresh as any).lastError = e?.message ?? String(e);
